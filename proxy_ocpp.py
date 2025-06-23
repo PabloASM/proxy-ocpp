@@ -1,38 +1,28 @@
 from flask import Flask, request, Response
-import requests
-import os
+import requests, os
 
 app = Flask(__name__)
-
-POWER_AUTOMATE_URL = "https://prod-239.westeurope.logic.azure.com:443/workflows/baefd2f4070f4968823318d3f5dfca3a/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=BWLx5HiJk0WqHruCeGxuA1wIbuvrrIRvKKhsowsqr88"
+POWER_AUTOMATE_URL = os.getenv("POWER_AUTOMATE_URL")  # idealmente configurable
 
 @app.route('/', methods=['GET'])
 def status():
-    return "Proxy OCPP en funcionamiento"
+    return "Proxy OCPP funcionando"
 
 @app.route('/', defaults={'path': ''}, methods=['PUT'])
 @app.route('/<path:path>', methods=['PUT'])
 def receive_file(path):
-    file_data = request.data
-    content_type = request.content_type or "application/octet-stream"
+    file_data = request.get_data()
+    # Toma el Content-Type si viene, si no lo fuerza a binario
+    content_type = request.headers.get('Content-Type', 'application/octet-stream')
     headers = {"Content-Type": content_type}
 
-    # Debug extra
-    print("Petición PUT recibida en ruta:", path)
-    print("Content-Type:", request.content_type)
-    print("Tamaño recibido:", len(file_data))
+    print("Recibido PUT en ruta:", path, "Content-Type:", content_type)
+    response = requests.post(POWER_AUTOMATE_URL, headers=headers, data=file_data)
+    print("POST a Power Automate:", response.status_code, response.text)
 
-    try:
-        response = requests.post(POWER_AUTOMATE_URL, headers=headers, data=file_data)
-        print("Respuesta de Power Automate:", response.status_code, response.text)
-
-        if response.status_code in [200, 202]:
-            return Response("Archivo reenviado correctamente.", status=200)
-        else:
-            return Response(f"Error reenviando a Power Automate: {response.text}", status=500)
-    except Exception as e:
-        print("Excepción durante el reenvío:", str(e))
-        return Response("Error interno en el proxy", status=500)
+    if response.status_code in (200, 202):
+        return Response("Reenviado correctamente", status=200)
+    return Response("Error reenviando", status=500)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
